@@ -1,0 +1,22 @@
+# Core ML  (Python 3.12 compatible)
+tensorflow==2.18.0
+scikit-learn==1.5.2
+numpy==1.26.4
+pandas==2.2.2
+
+# Visualization
+matplotlib==3.9.2
+plotly==5.24.1
+
+# Web app
+streamlit==1.40.2
+
+# PDF generation
+fpdf2==2.8.1
+
+# NLP
+spacy==3.8.3
+
+# HTTP / env
+requests==2.32.3
+python-dotenv==1.0.1
