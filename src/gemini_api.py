@@ -10,6 +10,7 @@ independent diagnostic reasoning.
 
 import os
 import json
+import time
 import requests
 from dotenv import load_dotenv
 
@@ -24,6 +25,10 @@ GEMINI_ENDPOINT = (
     "gemini-2.0-flash:generateContent"
 )
 TIMEOUT_SECONDS = 30
+
+# Retry config for 429 rate-limit responses
+_MAX_RETRIES   = 4
+_RETRY_BACKOFF = 2.0   # seconds — doubles each attempt (2, 4, 8, 16)
 
 
 # ── Prompt builder ────────────────────────────────────────────────────────────
@@ -108,24 +113,47 @@ def generate_narrative(diagnosis: dict) -> dict:
     }
 
     try:
-        resp = requests.post(
-            GEMINI_ENDPOINT,
-            headers=headers,
-            data=json.dumps(payload),
-            timeout=TIMEOUT_SECONDS,
-        )
-        resp.raise_for_status()
-        narrative = (
-            resp.json()
-            .get("candidates", [{}])[0]
-            .get("content", {})
-            .get("parts", [{}])[0]
-            .get("text", "")
-            .strip()
-        )
-        return _split_narrative(narrative, model="gemini-2.0-flash")
+        last_exc = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                resp = requests.post(
+                    GEMINI_ENDPOINT,
+                    headers=headers,
+                    data=json.dumps(payload),
+                    timeout=TIMEOUT_SECONDS,
+                )
+                # 429 = rate limited — wait and retry
+                if resp.status_code == 429:
+                    wait = _RETRY_BACKOFF * (2 ** attempt)
+                    time.sleep(wait)
+                    last_exc = f"429 rate limit (retried {attempt + 1}x)"
+                    continue
+                resp.raise_for_status()
+                narrative = (
+                    resp.json()
+                    .get("candidates", [{}])[0]
+                    .get("content", {})
+                    .get("parts", [{}])[0]
+                    .get("text", "")
+                    .strip()
+                )
+                return _split_narrative(narrative, model="gemini-2.0-flash")
 
-    except requests.exceptions.RequestException as exc:
+            except requests.exceptions.RequestException as exc:
+                last_exc = str(exc)
+                # Only retry on connection errors, not on bad requests (4xx except 429)
+                if hasattr(exc, "response") and exc.response is not None:
+                    if exc.response.status_code not in (429, 500, 502, 503, 504):
+                        break
+                wait = _RETRY_BACKOFF * (2 ** attempt)
+                time.sleep(wait)
+
+        return {
+            "narrative": "", "expert_diag": "", "root_cause": "",
+            "model": "gemini-2.0-flash", "error": last_exc,
+        }
+
+    except Exception as exc:
         return {
             "narrative": "", "expert_diag": "", "root_cause": "",
             "model": "gemini-2.0-flash", "error": str(exc),
@@ -139,12 +167,12 @@ def _split_narrative(narrative: str, model: str) -> dict:
     expert_diag = paragraphs[0] if paragraphs else narrative
     root_cause  = paragraphs[1] if len(paragraphs) >= 2 else ""
 
-    # Strip markdown bold headers if Gemini added them
-    expert_diag = expert_diag.lstrip("**Expert Diagnosis**").strip().lstrip(":").strip()
-    root_cause  = (root_cause
-                   .lstrip("**Probable Root Cause").strip()
-                   .lstrip("& Recommended Action**").strip()
-                   .lstrip(":").strip())
+    # Strip markdown bold headers if Gemini added them.
+    # Use re.sub rather than lstrip() — lstrip strips individual *characters*
+    # from the set, not the literal prefix string, which silently corrupts text.
+    import re
+    expert_diag = re.sub(r"^\*{1,2}Expert Diagnosis\*{1,2}\s*:?\s*", "", expert_diag, flags=re.IGNORECASE).strip()
+    root_cause  = re.sub(r"^\*{1,2}Probable Root Cause[^*]*\*{1,2}\s*:?\s*", "", root_cause,  flags=re.IGNORECASE).strip()
 
     return {
         "narrative"  : narrative,

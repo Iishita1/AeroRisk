@@ -16,6 +16,9 @@ fpdf2==2.8.1
 
 # NLP
 spacy==3.8.3
+# After installing, also run:
+#   python -m spacy download en_core_web_sm
+# Without it the maintenance-log search falls back to plain regex (still works).
 
 # HTTP / env
 requests==2.32.3

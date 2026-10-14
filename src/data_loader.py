@@ -158,6 +158,36 @@ def get_healthy_sequences(df: pd.DataFrame, feature_cols: list, seq_len: int = S
     return make_sequences(healthy_df, feature_cols, seq_len)
 
 
+def make_sequences_with_rul(
+    df: pd.DataFrame,
+    feature_cols: list,
+    seq_len: int = SEQUENCE_LENGTH,
+):
+    """
+    Build sliding-window sequences AND matching RUL labels from *labelled*
+    training data (where RUL = max_cycle - cycle for each engine).
+
+    Used to fit the RUL regressor after the autoencoder is trained.
+
+    Returns
+    -------
+    sequences  : ndarray (N, seq_len, n_features)
+    rul_labels : ndarray (N,)  — RUL at the last cycle of each window
+    """
+    sequences, rul_labels = [], []
+    df = add_rul(df)                  # adds RUL column to a copy
+
+    for uid, grp in df.groupby("unit_id", sort=False):
+        data = grp[feature_cols].values
+        ruls = grp["RUL"].values
+        n    = len(data)
+        for i in range(n - seq_len + 1):
+            sequences.append(data[i : i + seq_len])
+            rul_labels.append(ruls[i + seq_len - 1])   # RUL at the window's last step
+
+    return np.array(sequences, dtype=np.float32), np.array(rul_labels, dtype=np.float32)
+
+
 # ── Full pipeline convenience function ───────────────────────────────────────
 
 def prepare_data(dataset_id: str, data_dir: str = DATA_DIR, include_ops: bool = False):
