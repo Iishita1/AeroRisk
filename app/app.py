@@ -705,13 +705,24 @@ FD001/FD003: single operating condition.  FD002/FD004: 6 operating conditions.
                 st.dataframe(pd.DataFrame(thresh_data), use_container_width=True, hide_index=True)
 
             st.markdown("**Test set evaluation:**")
+            rul_cutoff = metadata.get("test_rul_cutoff", 30)
+            st.caption(
+                f"Held-out engine-level metrics; positive label = supplied true RUL "
+                f"≤ {rul_cutoff} cycles. This is a near-end-of-life proxy label, "
+                "not a direct fault annotation."
+            )
             eval_rows = [
                 {
                     "Dataset" : ds,
                     "Threshold": f"{v['threshold']:.6f}",
-                    "Mean error": f"{v['mean_error']:.6f}",
-                    "Max error":  f"{v['max_error']:.6f}",
-                    "Flagged":    f"{v['flagged']}/{v['total']}",
+                    "Precision": f"{v.get('precision', float('nan')):.3f}",
+                    "Recall": f"{v.get('recall', float('nan')):.3f}",
+                    "False positive rate": f"{v.get('false_positive_rate', float('nan')):.3f}",
+                    "TP / FP / TN / FN": (
+                        f"{v.get('tp', '—')} / {v.get('fp', '—')} / "
+                        f"{v.get('tn', '—')} / {v.get('fn', '—')}"
+                    ),
+                    "Flagged / engines": f"{v['flagged']}/{v['total']}",
                 }
                 for ds, v in metadata.get("test_evaluation", {}).items()
             ]

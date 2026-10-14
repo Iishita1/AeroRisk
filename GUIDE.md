@@ -78,6 +78,19 @@ This is a one-time step — the artefacts are saved to `models/` and reused on e
 python scripts/run_combined.py
 ```
 
+The combined training run evaluates the anomaly detector on the held-out
+C-MAPSS test engines. Since C-MAPSS supplies test RUL values rather than binary
+fault labels, the reported binary metrics use an explicit proxy: **positive =
+true RUL ≤ 30 cycles**. Precision, recall, false-positive rate, and TP/FP/TN/FN
+counts are calculated per dataset from the engine's final 50-cycle window.
+These measure detection of near-end-of-life engines under that chosen cutoff;
+they are not metrics against direct fault annotations. To recompute metrics
+with the saved model and thresholds without retraining, run:
+
+```powershell
+python scripts/evaluate_test.py
+```
+
 Expected output (condensed):
 ```
 Loading and merging all datasets...

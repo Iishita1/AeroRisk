@@ -38,6 +38,7 @@ from src.model import (
     compute_reconstruction_error, compute_threshold,
     fit_rul_regressor,
 )
+from src.evaluation import evaluate_test_sets, TEST_RUL_CUTOFF
 
 MODEL_DIR  = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "models")
 EPOCHS     = 60
@@ -103,20 +104,18 @@ for ds_id, ds in test_data.items():
 
 # ── 4. Evaluate test sets ─────────────────────────────────────────────────────
 print("\nPer-dataset test evaluation (per-dataset thresholds):")
-test_eval = {}
-for ds_id, ds in test_data.items():
-    errors  = compute_reconstruction_error(model, ds["test_seqs"])
-    t       = per_ds_thresholds[ds_id]
-    flagged = int((errors > t).sum())
-    test_eval[ds_id] = {
-        "threshold": round(t, 6),
-        "mean_error": round(float(errors.mean()), 6),
-        "max_error":  round(float(errors.max()),  6),
-        "flagged":    flagged,
-        "total":      len(errors),
-    }
-    print(f"  {ds_id}: threshold={t:.6f}  mean={errors.mean():.6f}  "
-          f"max={errors.max():.6f}  flagged={flagged}/{len(errors)}")
+test_eval = evaluate_test_sets(model, test_data, per_ds_thresholds)
+print(f"  Reference label: true RUL <= {TEST_RUL_CUTOFF} cycles (near end of life)")
+for ds_id, metrics in test_eval.items():
+    print(
+        f"  {ds_id}: threshold={metrics['threshold']:.6f}  "
+        f"flagged={metrics['flagged']}/{metrics['total']}  "
+        f"precision={metrics['precision']:.3f}  "
+        f"recall={metrics['recall']:.3f}  "
+        f"FPR={metrics['false_positive_rate']:.3f}  "
+        f"(TP={metrics['tp']}, FP={metrics['fp']}, "
+        f"TN={metrics['tn']}, FN={metrics['fn']})"
+    )
 
 # ── 5. Fit RUL regressor ──────────────────────────────────────────────────────
 # Build (sequence, RUL) pairs from the full training data (not just healthy),
@@ -179,6 +178,8 @@ metadata = {
     "per_ds_thresholds"  : {k: round(v, 6) for k, v in per_ds_thresholds.items()},
     "rul_regressor_mae"  : round(rul_mae, 1),
     "test_evaluation"    : test_eval,
+    "test_anomaly_label" : f"true RUL <= {TEST_RUL_CUTOFF} cycles",
+    "test_rul_cutoff"    : TEST_RUL_CUTOFF,
 }
 with open(f"{prefix}_metadata.json", "w") as f:
     json.dump(metadata, f, indent=2)
